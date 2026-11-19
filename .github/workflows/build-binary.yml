@@ -1,0 +1,107 @@
+name: build-binary
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux-amd64:
+    # Ubuntu 22.04 ships glibc 2.35; the artifact runs on Debian 12 (glibc 2.36).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            v="${GITHUB_REF_NAME#v}"
+          else
+            v="$(python -c 'import app; print(app.__version__)')-$(date -u +%Y%m%d%H%M)"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Build single-file binary
+        run: pyinstaller --clean --noconfirm muse2api.spec
+
+      - name: Smoke test (boot + /healthz)
+        run: |
+          set -euo pipefail
+          mkdir -p smoke && cp dist/muse2api smoke/ && cd smoke
+          PORT=18090 PUBLIC_BASE=http://127.0.0.1:18090 ADMIN_PASSWORD=smoke-pass \
+            SESSION_SECRET=smoke-secret ./muse2api > run.log 2>&1 &
+          pid=$!
+          ok=0
+          for _ in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:18090/healthz > health.json 2>/dev/null; then ok=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [[ "$ok" != "1" ]]; then
+            echo "::error::binary failed to serve /healthz"
+            cat run.log
+            exit 1
+          fi
+          cat health.json
+          curl -fsS http://127.0.0.1:18090/login.html -o login.html
+          grep -q "<html" login.html || { echo "::error::static assets missing"; exit 1; }
+          kill "$pid" || true
+          wait "$pid" 2>/dev/null || true
+          test -f data/muse-proxy.db || { echo "::error::database was not created"; exit 1; }
+          echo "smoke test passed"
+
+      - name: Package artifact
+        run: |
+          set -euo pipefail
+          mkdir -p pkg
+          cp dist/muse2api pkg/
+          cp .env.example pkg/
+          cat > pkg/README-RELEASE.txt <<'EOF'
+          muse2api single-file binary (linux-x86_64, glibc >= 2.35, Debian 12 ready)
+
+          1) mkdir -p /opt/muse2api && cd /opt/muse2api
+          2) tar xzf muse2api-linux-x64.tar.gz
+          3) cp .env.example .env && edit ADMIN_PASSWORD / SESSION_SECRET / MUSE_PROXY_KEY
+          4) chmod +x muse2api && ./muse2api
+
+          Runtime files (.env, data/) are created next to the executable.
+          Set ENGINE_BACKEND=protocol (default) unless you install Chromium and
+          want ENGINE_BACKEND=cdp.
+          Health check: GET /healthz
+          EOF
+          cd pkg && tar czf ../muse2api-linux-x64.tar.gz muse2api .env.example README-RELEASE.txt
+          sha256sum muse2api-linux-x64.tar.gz > muse2api-linux-x64.tar.gz.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: muse2api-linux-x64-${{ steps.ver.outputs.version }}
+          path: |
+            muse2api-linux-x64.tar.gz
+            muse2api-linux-x64.tar.gz.sha256
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+                 --title "$tag" --notes "muse2api single-file binary build ($tag)"
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber \
+            muse2api-linux-x64.tar.gz muse2api-linux-x64.tar.gz.sha256

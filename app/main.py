@@ -119,7 +119,7 @@ def run() -> None:
     import uvicorn
 
     uvicorn.run(
-        "app.main:app",
+        app,
         host=settings.host,
         port=settings.port,
         reload=False,

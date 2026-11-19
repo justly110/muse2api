@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import sys
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+# Frozen (PyInstaller) builds: runtime state (.env, data/) lives next to the
+# executable, while bundled read-only assets (static/) come from _MEIPASS.
+if getattr(sys, "frozen", False):
+    ROOT_DIR = Path(sys.executable).resolve().parent
+    BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", ROOT_DIR))
+else:
+    ROOT_DIR = Path(__file__).resolve().parent.parent
+    BUNDLE_DIR = ROOT_DIR
 DATA_DIR = ROOT_DIR / "data"
-STATIC_DIR = ROOT_DIR / "static"
+STATIC_DIR = BUNDLE_DIR / "static"
 
 
 class Settings(BaseSettings):
