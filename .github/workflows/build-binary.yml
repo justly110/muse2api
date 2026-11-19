@@ -59,6 +59,20 @@ jobs:
           cat health.json
           curl -fsS http://127.0.0.1:18090/login.html -o login.html
           grep -q "<html" login.html || { echo "::error::static assets missing"; exit 1; }
+          # Debian 12 ships glibc 2.36: every bundled object must ask for <= 2.36.
+          mei_dir="$(ls -d /tmp/_MEI* 2>/dev/null | head -1)"
+          echo "bundle dir: ${mei_dir:-none}"
+          max_glibc="0"
+          for f in ./muse2api $(find "${mei_dir:-/nonexistent}" -type f -name '*.so*' 2>/dev/null); do
+            v="$(readelf -V "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sed 's/GLIBC_//' | sort -V | tail -1)"
+            [ -n "$v" ] || continue
+            max_glibc="$(printf '%s\n%s\n' "$max_glibc" "$v" | sort -V | tail -1)"
+          done
+          echo "max GLIBC symbol requirement: $max_glibc"
+          if [ "$(printf '%s\n2.36\n' "$max_glibc" | sort -V | tail -1)" != "2.36" ]; then
+            echo "::error::binary requires glibc $max_glibc, newer than Debian 12 (2.36)"
+            exit 1
+          fi
           kill "$pid" || true
           wait "$pid" 2>/dev/null || true
           test -f data/muse-proxy.db || { echo "::error::database was not created"; exit 1; }
