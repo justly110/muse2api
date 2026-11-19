@@ -678,11 +678,12 @@ def pick_account(
         if not live:
             return None
         blocked = set(exclude_ids or [])
-        available = [a for a in live if a["id"] not in blocked] or (
-            [] if exclude_ids else live
-        )
+        available = [a for a in live if a["id"] not in blocked]
         if not available:
-            return None
+            # Retries exclude every account already tried; with a single-account
+            # pool that looks like an empty pool and hides the real upstream
+            # error. Fall back to the live set instead.
+            available = live
         live = available
         if preferred_id and not force_rotate:
             for a in live:

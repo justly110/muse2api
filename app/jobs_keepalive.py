@@ -156,16 +156,25 @@ def _run_one_local(action: str, aid: str) -> dict[str, Any]:
     if action == "quota":
         try:
             q = engine.quota(aid)
-            credits = None
-            if isinstance(q, dict):
-                credits = q.get("credits")
-                if credits is None and isinstance(q.get("data"), dict):
-                    credits = q["data"].get("credits")
-            pool_store.update(aid, ok=True, checked=True, credits=credits)
-            return {"ok": True, "credits": credits, "quota": q}
         except Exception as exc:  # noqa: BLE001
             pool_store.update(aid, ok=False, checked=True)
             return {"ok": False, "error": str(exc)}
+        if isinstance(q, dict) and q.get("found") is False:
+            # Unsupported backend or unreadable panel: do not mark the account
+            # as healthy with an empty quota cache.
+            pool_store.update(aid, checked=True)
+            return {
+                "ok": False,
+                "error": q.get("message") or "未读到额度",
+                "quota": q,
+            }
+        credits = None
+        if isinstance(q, dict):
+            credits = q.get("credits")
+            if credits is None and isinstance(q.get("data"), dict):
+                credits = q["data"].get("credits")
+        pool_store.update(aid, ok=True, checked=True, quota=q)
+        return {"ok": True, "credits": credits, "quota": q}
 
     # keepalive / renew → /api/session?vm_state=live（401 自动密码重登）
     try:

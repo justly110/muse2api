@@ -361,17 +361,25 @@ async def account_quota(aid: str, request: Request):
             "error": msg,
             "message": ("实时额度读取失败，返回缓存：" if cached else "额度读取失败：") + msg,
         }
+    found = bool(q.get("found", True)) if isinstance(q, dict) else bool(q)
     try:
-        pool_store.update(aid, quota=q, checked=True)
+        pool_store.update(aid, quota=q if found else None, checked=True)
     except Exception:  # noqa: BLE001
         pass
+    message = ""
+    if not found:
+        message = (
+            str(q.get("message") or "额度面板未读到有效用量")
+            if isinstance(q, dict)
+            else "额度面板未读到有效用量"
+        )
     return {
         "ok": True,
         "id": aid,
-        "found": bool(q),
-        "quota": q,
-        "cached": False,
-        "message": "" if q else "额度面板未读到有效用量",
+        "found": found,
+        "quota": q if found else cached,
+        "cached": not found,
+        "message": message,
     }
 
 

@@ -220,6 +220,21 @@ def _pick(force_rotate: bool = False, exclude_ids: set[str] | None = None) -> di
         daily_quota=int(getattr(cfg, "acct_daily_quota", 0) or 0),
     )
     if not acc:
+        # Distinguish "secret changed after import" from a genuinely empty pool:
+        # decrypt failure is silent and would otherwise look like no accounts.
+        broken = 0
+        for row in pool_store.list_raw():
+            if not row.get("cookie_enc"):
+                continue
+            cookies, _ = pool_store.get_cookies(str(row["id"]))
+            if not cookies:
+                broken += 1
+        if broken:
+            raise MuseGenerationError(
+                f"号池中有 {broken} 个账号的 Cookie 无法解密："
+                "SESSION_SECRET / SIGNUP_CREDENTIALS_KEY 与导入时不一致。"
+                "请恢复原密钥或重新导入 Cookie。"
+            )
         raise MuseGenerationError(EMPTY_POOL_MSG)
     _sticky_id = str(acc["id"])
     return acc
@@ -832,6 +847,18 @@ def quota(aid: str) -> dict[str, Any]:
             "message": "工作区尚未分配（等 VM 供货），暂时读不到额度",
         }
     eng = get_engine()
+    if not hasattr(eng, "quota"):
+        # The usage panel only exists in the Muse web UI; the protocol backend
+        # has no endpoint for it. Say so instead of raising AttributeError.
+        return {
+            "found": False,
+            "reason": "quota_requires_cdp",
+            "status": renewed.get("status"),
+            "message": (
+                "额度面板只能通过 Chromium 读取（ENGINE_BACKEND=cdp）；"
+                "当前是 protocol 后端"
+            ),
+        }
     return eng.quota(cookies, expires, account_id=aid)
 
 
