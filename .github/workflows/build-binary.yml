@@ -64,7 +64,7 @@ jobs:
           echo "bundle dir: ${mei_dir:-none}"
           max_glibc="0"
           for f in ./muse2api $(find "${mei_dir:-/nonexistent}" -type f -name '*.so*' 2>/dev/null); do
-            v="$(readelf -V "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sed 's/GLIBC_//' | sort -V | tail -1)"
+            v="$(readelf -V "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sed 's/GLIBC_//' | sort -V | tail -1 || true)"
             [ -n "$v" ] || continue
             max_glibc="$(printf '%s\n%s\n' "$max_glibc" "$v" | sort -V | tail -1)"
           done
