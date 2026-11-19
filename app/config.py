@@ -113,6 +113,14 @@ class Settings(BaseSettings):
             "engine_concurrency", "ENGINE_CONCURRENCY", "MUSE_ENGINE_CONCURRENCY"
         ),
     )
+    # Protocol backend: /api/hatch/vm/wake is async; poll /api/session until the
+    # VM reports RUNNING before giving up (cold starts take 1-3 minutes).
+    vm_wake_timeout_sec: int = Field(
+        default=180,
+        validation_alias=AliasChoices(
+            "vm_wake_timeout_sec", "VM_WAKE_TIMEOUT_SEC"
+        ),
+    )
     # Same-account protocol text concurrency (1=serial; max 2 when verified).
     # Image/video remain serial. Does not bypass upstream rate limits.
     protocol_account_text_concurrency: int = Field(

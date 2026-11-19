@@ -211,6 +211,7 @@ curl -b cj -X POST http://127.0.0.1:8090/api/cards/import \
 |------|------|------|
 | `PORT` / `PUBLIC_BASE` | `8090` | 监听端口，以及写进媒体链接的对外根地址 |
 | `ENGINE_BACKEND` | `protocol` | `protocol`：Noise XX + `chat.stream` 纯协议生成，不启动 Chromium；`cdp`（或旧值 `local`）：保留的 Chromium/CDP 引擎。设置页也可切换；管理台运行时覆盖优先于 `.env` |
+| `VM_WAKE_TIMEOUT_SEC` | `180` | `protocol` 后端唤醒工作区后的最长等待：`/api/hatch/vm/wake` 是异步的，冷启动时 `vm_state` 会先返回 `UNKNOWN`，客户端轮询 `/api/session` 直到 `RUNNING` |
 | `SIGNUP_CLIENT` | `http` | `http` 走真实站点；`mock` 只用于本地演练 |
 | `SIGNUP_MUSE_BASE` | `https://muse.ai` | 注册协议的站点根地址 |
 | `SIGNUP_TLS_IMPERSONATE` | `chrome` | 浏览器 TLS 指纹；`off` 则退回普通 HTTP 客户端 |

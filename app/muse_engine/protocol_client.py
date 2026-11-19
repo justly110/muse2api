@@ -245,13 +245,55 @@ class HatchProtocolClient:
             raise MuseGenerationError("Muse returned an invalid protocol bootstrap response")
         return value
 
+    @staticmethod
+    def _session_ready(session: dict) -> bool:
+        state = str(session.get("vm_state") or "").upper()
+        return (
+            session.get("status") == "assigned"
+            and bool(session.get("endpoint_url"))
+            and state in ("", "RUNNING")
+        )
+
+    async def _await_vm_running(self) -> dict:
+        """Wake is asynchronous: poll /api/session until the VM can serve.
+
+        Cold workspaces report vm_state=UNKNOWN for a while after wake; the web
+        UI simply waits for it, so failing on the first poll drops valid accounts.
+        """
+        from app.config import get_settings
+
+        timeout = float(getattr(get_settings(), "vm_wake_timeout_sec", 180) or 180)
+        deadline = time.monotonic() + timeout
+        delay = 2.0
+        session: dict = {}
+        while True:
+            # requests is sync; keep the event loop free for other routes.
+            session = await asyncio.to_thread(
+                self._http, "GET", "https://muse.ai/api/session?vm_state=live"
+            )
+            self._mark("session")
+            if self._session_ready(session):
+                return session
+            state = str(session.get("vm_state") or "").upper()
+            if state in ("DISABLED", "FAILED", "TERMINATED", "STOPPED"):
+                raise MuseGenerationError(
+                    f"Muse VM is {state}; 请在浏览器打开一次 muse.ai 检查工作区状态"
+                )
+            if time.monotonic() >= deadline:
+                raise MuseGenerationError(
+                    f"Muse VM 在 {int(timeout)}s 内仍未 RUNNING (state={state or 'UNKNOWN'})；"
+                    "已请求唤醒，请稍后重试，或先在浏览器打开 muse.ai 等工作区启动"
+                )
+            await asyncio.sleep(delay)
+            delay = min(delay * 1.5, 10.0)
+
     async def connect(self) -> None:
         self._mark("session_start")
         session = self._http("GET", "https://muse.ai/api/session?vm_state=live")
         self._mark("session")
         vm_id = session.get("vm_id")
         vm_state = str(session.get("vm_state") or "").upper()
-        if session.get("status") != "assigned" or not session.get("endpoint_url") or vm_state not in ("", "RUNNING"):
+        if not self._session_ready(session):
             if not vm_id:
                 raise MuseGenerationError("Muse workspace is not assigned")
             # Wake is best-effort; readiness still requires a fresh session lookup.
@@ -269,8 +311,7 @@ class HatchProtocolClient:
                 self._mark("wake")
             except MuseGenerationError:
                 pass
-            session = self._http("GET", "https://muse.ai/api/session?vm_state=live")
-            self._mark("session")
+            session = await self._await_vm_running()
             vm_id = session.get("vm_id")
             vm_state = str(session.get("vm_state") or "").upper()
         if session.get("status") != "assigned":
