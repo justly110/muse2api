@@ -67,6 +67,23 @@ uvicorn app.main:app --host 0.0.0.0 --port 8090
 - 管理台：<http://127.0.0.1:8090/login.html>
 - 默认账号：`admin`，密码为 `.env` 中的 `ADMIN_PASSWORD`
 
+## 预编译二进制（linux-x86_64）
+
+打 `v*` tag（或在 Actions 里手动运行 `build-binary`）会产出单文件二进制并挂到 Release：
+
+- 产物：`muse2api-linux-x64.tar.gz`（含 `muse2api`、`.env.example`、`README-RELEASE.txt`）与 `.sha256`
+- 构建环境：Ubuntu 22.04 / glibc 2.35，可直接在 Debian 12（glibc 2.36）运行
+- 加载器：PyInstaller onefile；`.env` 与 `data/` 生成在可执行文件同目录
+
+```bash
+mkdir -p /opt/muse2api && cd /opt/muse2api
+tar xzf muse2api-linux-x64.tar.gz
+cp .env.example .env   # 改 ADMIN_PASSWORD / SESSION_SECRET / MUSE_PROXY_KEY
+chmod +x muse2api && ./muse2api
+```
+
+默认 `ENGINE_BACKEND=protocol`，不需要 Chromium；若要 `ENGINE_BACKEND=cdp`，需自行在系统里安装 Chromium 并配置 `CHROMIUM_PATH`。
+
 ## 管理台
 
 登录后从左侧进入。生成类页面和记录页分开：对话不会出现在生图、生视频的记录里。

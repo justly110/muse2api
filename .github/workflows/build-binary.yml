@@ -83,7 +83,7 @@ jobs:
           want ENGINE_BACKEND=cdp.
           Health check: GET /healthz
           EOF
-          cd pkg && tar czf ../muse2api-linux-x64.tar.gz muse2api .env.example README-RELEASE.txt
+          (cd pkg && tar czf ../muse2api-linux-x64.tar.gz muse2api .env.example README-RELEASE.txt)
           sha256sum muse2api-linux-x64.tar.gz > muse2api-linux-x64.tar.gz.sha256
 
       - uses: actions/upload-artifact@v4
